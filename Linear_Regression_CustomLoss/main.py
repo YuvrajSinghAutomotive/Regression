@@ -1,9 +1,12 @@
 # import libraries
+import os
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 from sklearn.preprocessing import StandardScaler
 from scipy.optimize import minimize
+
+os.system('cls')
 
 # Load data (generate random predictor data)
 X_raw = np.random.random(100*9)
@@ -13,7 +16,7 @@ scaler = StandardScaler().fit(X_raw)
 X = scaler.transform(X_raw)
 # Add an intercept column at the beginning of predictor matrix
 X = np.concatenate((np.ones((X.shape[0],1)),X),axis=1)
-print(np.around(X,2))
+# print(np.around(X,2))
 # Define "true" beta regression coefficients
 beta = np.array([2,6,7,3,5,7,1,2,2,8])
 # y = Xb
@@ -51,7 +54,7 @@ def objective_function(beta,X,Y):
     return(error)
 
 # You must provide a starting point at which to initialize the parameter search space
-beta_init = np.array([1]*X.shape[1])
+beta_init = np.array([1] * X.shape[1])
 result = minimize(objective_function,beta_init,args=(X,Y),method='BFGS',options={'maxiter':500})
 
 beta_hat = result.x
@@ -59,11 +62,64 @@ print()   # print(beta_hat)
 
 LinRegRes = pd.DataFrame({
     "true_beta": beta,
-    "estimated_beta": beta_hat,
-    "error": beta - beta_hat
+    "estimated_beta": np.around(beta_hat,2),
+    "error": np.around(beta - beta_hat,3)
 })[["true_beta","estimated_beta","error"]]
 print(LinRegRes)
 print()
-print("Loss Function value = " + str(loss_function(np.matmul(X,beta_hat),Y,None)))
+print("Loss Function value = " + str( np.around(loss_function(np.matmul(X,beta_hat),Y,None),3) ))
 
 # Incorporating regularization into model fitting
+class LinearModel_regularized:
+    """ 
+    Linear Model: Y=Xb, fit by minimizing the provided loss function with l2-regularization
+    """
+    def __init__(self,loss_function=None,X=None,Y=None,sample_weights=None,beta_init=None,regularization=None,reg_type=None):
+        self.regularization = regularization
+        self.reg_type = None
+        self.beta = None
+        self.loss_function = loss_function
+        self.sample_weights = sample_weights
+        self.beta_init = beta_init
+        self.X = X
+        self.Y = Y
+
+    def predict(self,X):
+        prediction = np.matmul(X,self.beta)
+        return(prediction)
+
+    def model_error(self):
+        error = self.loss_function(self.predict(self.X),self.Y,sample_weights=self.sample_weights)
+        return(error)
+
+    def l2_regularized_loss(self,beta):
+        self.beta = beta
+        return(self.model_error() + sum(self.regularization * np.array(self.beta)**2))
+
+    def l1_regularized_loss(self,beta):
+        self.beta = beta
+        return(self.model_error() + sum(self.regularization * np.array(abs(self.beta))))
+
+    def fit(self,maxiter=250):
+        if type(self.beta_init)==type(None):
+            self.beta_init = np.array([1]*self.X.shape[1])
+        else:
+            pass
+
+        if self.beta!=None and all(self.beta_init == self.beta):
+            print("Model already fit once; continuing fit with more iterations.")
+
+        if self.reg_type == 'L1':
+            res = minimize(self.l1_regularized_loss,self.beta_init,args=(self.X,self.Y),method='BFGS',options={'maxiter':500})
+            self.beta = res.x
+            self.beta_init = self.beta
+        if self.reg_type == 'L2':
+            res = minimize(self.l2_regularized_loss,self.beta_init,args=(self.X,self.Y),method='BFGS',options={'maxiter':500})
+            self.beta = res.x
+            self.beta_init = self.beta
+
+
+print("L2 regularized model")
+l2_mape_model = LinearModel_regularized(loss_function=mean_absolute_percentage_error,X=X,Y=Y,regularization=0.001,reg_type='L2')
+l2_mape_model.fit()
+l2_mape_model.beta
